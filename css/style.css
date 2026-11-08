@@ -370,8 +370,8 @@ main { display: flex; height: calc(100% - var(--top-h)); }
 .ppath.add { justify-content: center; border-style: dashed; background: transparent; color: var(--muted); font-weight: 700; }
 .ppath.add span { font-weight: 400; }
 
-.avatars { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; }
-.ava { background: var(--card); border: 2px solid var(--line); border-radius: 12px; font-size: 26px; aspect-ratio: 1; padding: 0; }
+.avatars { display: grid; grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); gap: 8px; }
+.ava { background: var(--card); border: 2px solid var(--line); border-radius: 12px; font-size: 30px; aspect-ratio: 1; padding: 0; max-height: 72px; }
 .ava.on { border-color: var(--gold); background: var(--card2); }
 .form-err { color: var(--bad); font-size: 13px; min-height: 18px; margin-top: 6px; }
 .danger-link { color: var(--bad); margin-top: 22px; width: 100%; border-color: rgba(255,93,115,.4); }
@@ -522,7 +522,6 @@ kbd { background: var(--card2); border: 1px solid var(--line); border-radius: 5p
   .scr h1 { font-size: 30px; margin-top: 26px; }
   .profiles { grid-template-columns: 1fr; }
   .pcard.add { min-height: 120px; }
-  .avatars { grid-template-columns: repeat(4, 1fr); }
   .path-cards { grid-template-columns: 1fr; }
   .path-card { padding: 18px 14px; }
 }
