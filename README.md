@@ -8,7 +8,15 @@ An incremental game to learn a language: unlock **vocabulary bricks** (10 words 
 - 🇬🇧 **J'apprends l'anglais** — interface en français
 - 🇫🇷 **I'm learning French** — interface in American English
 
-Plusieurs profils peuvent jouer sur le même appareil. La progression est enregistrée dans le navigateur (localStorage) : rien n'est partagé entre profils, parcours ou appareils.
+Plusieurs profils peuvent jouer sur le même appareil. La progression est enregistrée dans le navigateur (localStorage) : rien n'est partagé entre profils ni entre parcours.
+
+## En ligne (facultatif) / Online (optional)
+Avec un compte en ligne (pseudo + e-mail + mot de passe), via [Supabase](https://supabase.com) :
+- sauvegarde synchronisée entre appareils (PC ↔ téléphone) ;
+- amis ajoutés par pseudo (demande + acceptation), progression des amis par parcours ;
+- messages en direct entre amis, blocage possible.
+
+La base est décrite dans `supabase/migrations/` (tables protégées par RLS). La clé présente dans `js/online.js` est la clé **publique** du projet.
 
 ## Jouer / Play
 Ouvrir la page GitHub Pages du dépôt, ou ouvrir `index.html` dans un navigateur (Chrome / Edge / Safari). Aucune installation, aucune dépendance.

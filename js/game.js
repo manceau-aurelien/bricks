@@ -167,6 +167,7 @@ function loadRoot() {
 function save() {
   if (S) S.lastTick = Date.now();
   try { localStorage.setItem(ROOT_KEY, JSON.stringify(ROOT)); } catch (e) { /* stockage plein ou bloqué */ }
+  if (typeof scheduleCloudSync === "function") scheduleCloudSync();
 }
 
 // ---------- Érosion (courbe d'oubli) ----------
@@ -330,6 +331,7 @@ function renderStatic() {
     </div>
     <div class="spacer"></div>
     <button id="btn-express" class="btn btn-gold" title="${esc(L("expressTip"))}">⚡<span class="lbl"> ${L("express")}</span><span id="erode-count" class="badge hidden">0</span></button>
+    <button id="btn-friends" class="btn btn-icon" title="${esc(L("friendsTip"))}">👥<span id="friends-badge" class="badge hidden"></span></button>
     <button id="btn-sound" class="btn btn-icon" title="${esc(L("soundTip"))}">🔊</button>
     <button id="btn-profile" class="btn profile-chip" title="${esc(L("profileTip"))}">
       <span class="pc-ava">${P.avatar}</span><span class="pc-name">${esc(P.name)}</span><span class="pc-flag">${COURSE.flag}</span></button>
@@ -339,6 +341,7 @@ function renderStatic() {
   $("#sheet-close").title = L("close");
 
   $("#btn-express").onclick = expressReview;
+  $("#btn-friends").onclick = () => openFriends();
   $("#btn-sound").onclick = () => { P.settings.sound = !P.settings.sound; if (!P.settings.sound && HAS_TTS) speechSynthesis.cancel(); save(); renderTop(); };
   $("#btn-profile").onclick = (e) => { e.stopPropagation(); renderMenu(); $("#menu").classList.toggle("hidden"); };
 }
@@ -531,11 +534,12 @@ function toast(html, cls = "") {
 // ---------- Fenêtre modale ----------
 let KEY = null; // gestionnaire clavier actif
 function openModal(html, cls = "") {
+  if (!/\bfriends\b/.test(cls) && typeof FV !== "undefined") FV = null;   // la fenêtre Amis n'est plus affichée
   $("#modal").className = cls; $("#modal").innerHTML = html;
   $("#overlay").classList.remove("hidden"); $("#modal").scrollTop = 0;
 }
 function closeModal() {
-  $("#overlay").classList.add("hidden"); $("#modal").innerHTML = ""; KEY = null; SES = null;
+  $("#overlay").classList.add("hidden"); $("#modal").innerHTML = ""; KEY = null; SES = null; FV = null;
   if (HAS_TTS) speechSynthesis.cancel();
   save();
   if (S) renderAll();
@@ -1045,6 +1049,7 @@ function finishSession() {
     rows.push({ p, a, st });
   }
   S.stats.sessions++;
+  S.lastActive = Date.now();
   touchStreak();
   const { opts, targets, maxCombo } = SES;
   const tot = Object.values(SES.per).reduce((s, p) => s + p.tot, 0), ok = Object.values(SES.per).reduce((s, p) => s + p.ok, 0);
@@ -1104,7 +1109,8 @@ function confirmResetPath() {
       L("loseSkills", Object.keys(S.skills).length), L("loseRank", S.xp, S.streak.days)],
     outro: L("otherSafe"),
     onConfirm: () => {
-      P.paths[COURSE.id] = freshPath(); S = P.paths[COURSE.id];
+      const gen = (S.gen || 0) + 1;
+      P.paths[COURSE.id] = Object.assign(freshPath(), { gen }); S = P.paths[COURSE.id];
       SEL = { type: "brick", id: "basics" };
       save(); closeModal(); intro();
     },
@@ -1140,12 +1146,15 @@ function enterPath(path) {
   closeSheet();
   renderStatic(); renderAll(); save();
   $("#tree-wrap").scrollTop = 0; window.scrollTo(0, 0);
+  if (Online.pid !== P.id) onlineAttach(); else { updateFriendsBadge(); pushSave(true); }
   if (!S.started) intro();
   else if (gain >= 1) welcomeBack(dt, gain);
 }
 
 function showProfiles() {
   if (S) save();
+  if (connected()) pushSave(true);
+  onlineDetach();
   S = null; P = null; COURSE = null;
   $("#overlay").classList.add("hidden"); KEY = null; SES = null; PENDING_TOASTS = [];
   closeSheet();
@@ -1172,6 +1181,7 @@ function renderProfiles() {
     return `<div class="pcard" data-pid="${p.id}">
       <button class="pedit" data-edit="${p.id}" title="${esc(X("edit"))}">✏️</button>
       <div class="pava">${p.avatar}</div><div class="pname">${esc(p.name)}</div>
+      ${p.cloud ? `<div class="pcloud">☁️ ${esc(p.cloud.username)}</div>` : ""}
       <div class="ppaths">${paths}</div></div>`;
   }).join("");
   $("#screen").innerHTML = `<div class="scr">
@@ -1179,7 +1189,8 @@ function renderProfiles() {
       <div class="lang-toggle"><button data-lang="fr" class="${PL === "fr" ? "on" : ""}">FR</button><button data-lang="en" class="${PL === "en" ? "on" : ""}">EN</button></div></div>
     <h1>${X("whoPlays")}</h1><p class="scr-sub">${X("profilesSub")}</p>
     <div class="profiles">${cards}
-      <button class="pcard add" data-new><div class="pava">＋</div><div class="pname">${X("newProfile")}</div></button></div></div>`;
+      <button class="pcard add" data-new><div class="pava">＋</div><div class="pname">${X("newProfile")}</div></button>
+      ${HAS_CLOUD ? `<button class="pcard add" data-restore><div class="pava">☁️</div><div class="pname">${X("restoreCard")}</div></button>` : ""}</div></div>`;
 }
 
 function profileForm(PL, p, onSubmit, extraFoot = "") {
@@ -1237,8 +1248,10 @@ function confirmDeleteProfile(id) {
   dangerModal({
     lang: PL, title: tr(PL, "deleteTitle", p.name), intro: tr(PL, "deleteLose"),
     items: items.length ? items : [tr(PL, "noPath")],
+    outro: p.cloud ? tr(PL, "cloudKept") : "",
     onConfirm: () => {
       delete ROOT.profiles[id];
+      localStorage.removeItem("bricks-sb-" + id); delete CLIENTS[id];
       if (ROOT.lastProfile === id) ROOT.lastProfile = null;
       save(); closeModal();
     },
@@ -1296,6 +1309,7 @@ function bind() {
     const ed = e.target.closest("[data-edit]");
     if (ed) return editProfileModal(ed.dataset.edit);
     if (e.target.closest("[data-new]")) return newProfileModal();
+    if (e.target.closest("[data-restore]")) return restoreAccountModal();
     const pp = e.target.closest("[data-path]");
     if (pp) return enterProfile(pp.dataset.pid, pp.dataset.path);
     const card = e.target.closest(".pcard[data-pid]");
@@ -1311,6 +1325,17 @@ function bind() {
     if (KEY) KEY(e);
   });
   matchMedia("(max-width: 1100px)").addEventListener("change", (e) => { if (!e.matches) closeSheet(); });
+  // Jeu ouvert dans plusieurs onglets : on reprend les profils modifiés ailleurs (sauf celui en cours ici)
+  window.addEventListener("storage", (e) => {
+    if (e.key !== ROOT_KEY || !e.newValue) return;
+    try {
+      const other = JSON.parse(e.newValue);
+      if (!other || !other.profiles) return;
+      for (const id in ROOT.profiles) if (!other.profiles[id] && (!P || id !== P.id)) delete ROOT.profiles[id];
+      for (const id in other.profiles) if (!P || id !== P.id) ROOT.profiles[id] = other.profiles[id];
+      if (!$("#screen").classList.contains("hidden") && $("#overlay").classList.contains("hidden")) renderProfiles();
+    } catch (err) { /* données illisibles : on ignore */ }
+  });
 }
 
 let lastFull = 0, lastSave = 0;
@@ -1329,8 +1354,11 @@ function init() {
   const ids = Object.keys(ROOT.profiles);
   if (ids.length === 1) enterProfile(ids[0]);
   else showProfiles();
+  handleAuthRedirect();
   setInterval(loop, 250);
   window.addEventListener("beforeunload", save);
-  document.addEventListener("visibilitychange", () => { if (document.hidden) save(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) { save(); onlineOnHidden(); } else onlineOnVisible();
+  });
 }
 init();
