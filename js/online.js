@@ -6,7 +6,7 @@
 // =====================================================================
 const CLOUD_URL = "https://dsessjeacvlsoncnlwmh.supabase.co";
 const CLOUD_KEY = "sb_publishable_0q7q7nRw21calnx_Pi9Stw_09yQQ7TH";
-const HAS_CLOUD = !!(window.supabase && window.supabase.createClient);
+const HAS_CLOUD = !window.BRICKS_TEST && !!(window.supabase && window.supabase.createClient);
 
 const Online = {
   sb: null, pid: null, user: null, me: null, channel: null,
@@ -347,6 +347,8 @@ function friendsHead(title, backTo) {
 }
 function bindFriendsCommon() {
   $("#modal [data-x]").onclick = closeModal;
+  const n = $("#modal [data-news]");
+  if (n) n.onclick = () => openChangelog(() => openFriends());
   const b = $("#modal [data-back]");
   if (b) b.onclick = () => openFriends(b.dataset.back);
 }
@@ -364,6 +366,7 @@ function openFriends(view) {
 function renderFriendsIntro() {
   const expired = linked() && P.cloud.expired;
   openModal(friendsHead(`👥 ${L("friends")}`) + `<div class="m-body">
+      <div class="news-row">${newsButtonHtml()}</div>
       <div class="lesson-ico">👥</div>
       <div class="lesson-slide f-pitch"><div>${expired ? `<b>${L("sessionExpired")}</b>` : L("onlinePitch")}</div></div>
       ${HAS_CLOUD ? `<div class="f-actions">
@@ -469,6 +472,7 @@ function renderFriendsHome() {
       <div class="f-btns">${actions}</div></div>`;
   const sec = (title, items) => (items ? `<div class="p-section"><h4>${title}</h4>${items}</div>` : "");
   const html = friendsHead(`👥 ${L("friends")}`) + `<div class="m-body friends-home">
+      <div class="news-row">${newsButtonHtml()}</div>
       <div class="f-me"><span class="f-ava big">${esc(me.avatar)}</span>
         <div class="f-main"><div class="p-sub">${L("yourName")}</div><div class="f-myname">${esc(me.username)}</div>
         <div class="p-sub">${L("shareName")}</div></div></div>

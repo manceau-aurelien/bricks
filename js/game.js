@@ -5,7 +5,8 @@
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
-const ROOT_KEY = "bricks_v2";
+// Le site de test garde sa propre sauvegarde : il ne touche jamais à celle du vrai jeu
+const ROOT_KEY = window.BRICKS_TEST ? "bricks_test_v1" : "bricks_v2";
 const OLD_KEY = "bricks_english_v1";   // sauvegarde de la V1 (migrée automatiquement)
 const MIN = 60e3, HOUR = 36e5, DAY = 864e5;
 const BASE_HL = 15 * MIN;          // demi-vie après la 1re leçon (≈15-21 min)
@@ -153,7 +154,7 @@ function loadRoot() {
   if (ROOT && ROOT.profiles) return;
   ROOT = { v: 2, uiLang: (navigator.language || "fr").toLowerCase().startsWith("fr") ? "fr" : "en", lastProfile: null, profiles: {} };
   // Migration de la sauvegarde V1 (un seul joueur, parcours anglais)
-  try {
+  if (!window.BRICKS_TEST) try {
     const old = JSON.parse(localStorage.getItem(OLD_KEY));
     if (old && old.started) {
       const id = uid(), settings = old.settings || { sound: true };
@@ -344,6 +345,8 @@ function renderStatic() {
   $("#btn-friends").onclick = () => openFriends();
   $("#btn-sound").onclick = () => { P.settings.sound = !P.settings.sound; if (!P.settings.sound && HAS_TTS) speechSynthesis.cancel(); save(); renderTop(); };
   $("#btn-profile").onclick = (e) => { e.stopPropagation(); renderMenu(); $("#menu").classList.toggle("hidden"); };
+  updateNewsDot();
+  if (typeof testModeHook === "function") testModeHook();
 }
 
 function renderMenu() {
@@ -355,6 +358,7 @@ function renderMenu() {
     <div class="menu-head"><span class="pc-ava">${P.avatar}</span><b>${esc(P.name)}</b></div>
     <button data-act="path" data-path="${other}">${pathItem}</button>
     <button data-act="profiles">${L("menuProfiles")}</button>
+    <button data-act="news">${L("menuNews")}${changelogUnseen() ? `<span class="news-pill">${L("newsNew")}</span>` : ""}</button>
     <button data-act="help">${L("menuHelp")}</button>
     <button data-act="reset" class="danger">${L("menuReset")}</button>`;
   $("#menu").onclick = (e) => {
@@ -363,6 +367,7 @@ function renderMenu() {
     const act = el.dataset.act;
     if (act === "path") enterPath(el.dataset.path);
     if (act === "profiles") showProfiles();
+    if (act === "news") openChangelog();
     if (act === "help") slides(L("help"), { icon: "🧱", title: L("howTo"), finalLabel: L("gotIt") });
     if (act === "reset") confirmResetPath();
   };
@@ -1145,7 +1150,7 @@ function enterPath(path) {
   if (S) save();
   COURSE = COURSES[path]; UI = COURSE.ui;
   BRICKS = COURSE.bricks; BR = COURSE.BR; SKILLS = COURSE.SKILLS; SK = COURSE.SK;
-  if (!P.paths[path]) P.paths[path] = freshPath();
+  if (!P.paths[path]) P.paths[path] = typeof testFullPath === "function" ? testFullPath(COURSES[path]) : freshPath();
   S = P.paths[path]; P.lastPath = path;
   SEL = { type: "brick", id: "basics" };
   pickVoice();
