@@ -122,7 +122,7 @@ main { display: flex; height: calc(100% - var(--top-h)); }
 .path-flag .flag, .pp-flag .flag { border-radius: 5px; }
 
 /* ---------------- Arbre ---------------- */
-#tree { position: relative; height: 680px; min-width: 760px; }
+#tree { position: relative; height: 900px; min-width: 760px; }
 #links { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 #links line { stroke: var(--line); stroke-width: 3; vector-effect: non-scaling-stroke; stroke-dasharray: 6 6; }
 #links line.on { stroke: #5b6cb0; stroke-dasharray: none; }
@@ -597,4 +597,88 @@ details.p-section summary h4 { display: inline; }
   .m-foot.chat-input { flex-wrap: nowrap; }
   .m-foot.chat-input .btn { flex: 0 0 auto; }
   .f-add .btn { padding: 9px 14px; }
+}
+
+/* =====================================================================
+   BOSS
+   ===================================================================== */
+#links line.boss-link { stroke: #7a2c4a; stroke-dasharray: 3 7; stroke-width: 3; }
+#links line.boss-link.on { stroke: #d6336c; stroke-dasharray: none; }
+.node.boss { width: 170px; transform: translate(-50%, -62px); }
+.boss-ring {
+  width: 124px; height: 124px; padding: 8px;
+  background: conic-gradient(#ff3d6e calc(var(--p, 100) * 1%), #3b1530 0);
+  box-shadow: 0 0 0 3px #5b1a3d, 0 0 34px rgba(214, 51, 108, .55), 0 10px 28px rgba(0,0,0,.5);
+  animation: bossGlow 2.6s ease-in-out infinite;
+}
+.boss-ring .ring-in { background: radial-gradient(circle at 50% 35%, #4a1838, #1a0b1c 70%); font-size: 56px; }
+.node.boss .n-name { font-size: 15px; color: #ff9ab8; letter-spacing: .3px; text-shadow: 0 0 12px rgba(255, 61, 110, .5); }
+.node.boss.locked .boss-ring { filter: grayscale(.7) brightness(.6); animation: none; }
+.node.boss.available .boss-ring { animation: bossGlow 1.4s ease-in-out infinite; }
+.node.boss.defeated .boss-ring { background: conic-gradient(var(--gold) 100%, #3b1530 0); box-shadow: 0 0 30px rgba(255, 201, 74, .55); animation: none; }
+.node.boss.defeated .n-name { color: var(--gold); }
+.node.boss:hover .ring { transform: scale(1.05); }
+@keyframes bossGlow { 0%,100% { box-shadow: 0 0 0 3px #5b1a3d, 0 0 22px rgba(214, 51, 108, .4); } 50% { box-shadow: 0 0 0 3px #8a2350, 0 0 46px rgba(255, 61, 110, .75); } }
+.boss-info {
+  position: absolute; top: -2px; right: -2px; width: 30px; height: 30px; border-radius: 50%;
+  background: #2a1430; border: 2px solid #ff3d6e; color: #ffd0de; font-weight: 800; font-style: italic; font-family: Georgia, serif;
+  font-size: 15px; display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; z-index: 2;
+}
+.boss-info:hover { background: #ff3d6e; color: #fff; }
+.boss-info.static { position: static; flex-shrink: 0; }
+.grow-box { flex: 1; min-width: 0; }
+.boss-hp { height: 12px; background: #2a0f22; border: 1px solid #5b1a3d; border-radius: 7px; overflow: hidden; margin: 6px 0; }
+.boss-hp > div { height: 100%; background: linear-gradient(90deg, #ff3d6e, #ff7a59); border-radius: 6px; transition: width 1.3s cubic-bezier(.2,.8,.2,1); }
+.boss-hp.mini { height: 7px; width: 110px; margin: 5px auto 0; }
+.boss-hp.big { height: 20px; border-radius: 11px; margin: 4px 0 16px; }
+.p-ico.boss-ico { background: radial-gradient(circle at 50% 35%, #4a1838, #1a0b1c 70%); border-color: #8a2350; box-shadow: 0 0 18px rgba(214, 51, 108, .4); }
+.boss-card { background: linear-gradient(180deg, #2a1430, #1c1028); border: 1px solid #5b1a3d; border-radius: var(--radius); padding: 14px; margin: 14px 0 6px; }
+.boss-card.won { text-align: center; border-color: var(--gold); background: linear-gradient(180deg, #3a2f12, #241c0c); }
+.boss-big { font-size: 54px; }
+.boss-life-label { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; color: #ffb3c8; }
+.boss-life-label b { font-size: 18px; color: #fff; }
+.boss-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
+.boss-fight-btn { font-size: 18px; letter-spacing: .3px; }
+.boss-hist { font-size: 13px; padding: 6px 10px; background: var(--card); border-radius: 9px; margin-bottom: 5px; }
+.boss-req { margin-bottom: 10px; font-size: 13px; color: #ffb3c8; }
+.boss-req.ok { color: var(--good); }
+.boss-req .bar { margin: 5px 0 0; height: 6px; }
+.fp-boss { font-size: 12.5px; color: #ff9ab8; margin-top: 3px; }
+
+/* Fenêtres du boss */
+#modal.boss-modal { background: linear-gradient(180deg, #221029, #150b1d); border-color: #5b1a3d; box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 60px rgba(214, 51, 108, .25); }
+#modal.boss-modal .progress > div { background: linear-gradient(90deg, #ff3d6e, #ff9a59); }
+.boss-head { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #ffb3c8; }
+.boss-head .boss-hp.mini { width: 70px; margin: 0; }
+.boss-rules .boss-rule { background: rgba(255,255,255,.03); border: 1px solid #3d1a36; border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; line-height: 1.55; font-size: 14.5px; }
+.boss-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13.5px; }
+.boss-table td { padding: 5px 8px; border-bottom: 1px solid #3d1a36; }
+.boss-table td:last-child { text-align: right; font-weight: 700; white-space: nowrap; }
+.boss-table.result { max-width: 340px; margin: 6px auto 0; }
+.boss-table tr.hit td { background: rgba(255, 61, 110, .18); color: #fff; }
+.boss-avatar { font-size: 72px; display: inline-block; }
+.boss-avatar.hurt { animation: bossHurt .6s .5s; }
+.boss-avatar.dead { animation: bossDead 1.4s .6s forwards; }
+@keyframes bossHurt { 0%,100% { transform: none; filter: none; } 20% { transform: translateX(-10px) rotate(-8deg); filter: brightness(2) saturate(0); } 50% { transform: translateX(10px) rotate(8deg); } 75% { transform: translateX(-5px); } }
+@keyframes bossDead { 0% { transform: none; } 40% { transform: scale(1.25) rotate(-10deg); } 100% { transform: scale(1) rotate(0); } }
+.boss-msg { font-size: 18px; margin: 8px 0 14px; }
+.slow-btn { display: block; margin: 12px auto 0; padding: 7px 14px; font-size: 14px; }
+.type-in.write { font-size: 19px; letter-spacing: 0; }
+
+@media (max-width: 760px) {
+  .node.boss { width: auto; transform: none; }
+  .boss-tier .tier-row { display: flex; justify-content: center; }
+  .boss-ring { width: 104px; height: 104px; }
+  .boss-ring .ring-in { font-size: 46px; }
+  .boss-avatar { font-size: 60px; }
+  .type-in.write { font-size: 17px; }
+}
+
+/* Barre du haut mobile : tout tient sur une ligne (logo + 4 boutons) */
+@media (max-width: 760px) {
+  #topbar { gap: 6px; }
+  .logo { font-size: 16px; letter-spacing: .5px; gap: 5px; }
+  #topbar .btn-icon, #btn-express { padding: 7px 9px; font-size: 16px; }
+  .profile-chip { padding: 5px 8px; gap: 4px; }
+  .pc-ava { font-size: 18px; }
 }

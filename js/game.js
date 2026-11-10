@@ -271,14 +271,14 @@ function pickVoice() {
   for (const re of prefs) { VOICE = vs.find((v) => re.test(v.lang)); if (VOICE) return; }
 }
 if (HAS_TTS) speechSynthesis.onvoiceschanged = pickVoice;
-function speak(text, delay = 0) {
+function speak(text, delay = 0, rate = 0.88) {
   if (!sound() || !HAS_TTS || !COURSE) return;
   setTimeout(() => {
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = VOICE ? VOICE.lang : COURSE.target === "fr" ? "fr-FR" : "en-GB";
     if (VOICE) u.voice = VOICE;
-    u.rate = 0.88;
+    u.rate = rate;
     speechSynthesis.speak(u);
   }, delay);
 }
@@ -433,15 +433,16 @@ function renderTree() {
     const p = BR[r], cls = owned(b.id) ? "on" : brickReqMet(b) ? "avail" : "";
     lines += `<line class="${cls}" x1="${p.x}%" y1="${nodeTop(p.y)}" x2="${b.x}%" y2="${nodeTop(b.y)}"/>`;
   }));
-  $("#links").innerHTML = lines;
+  $("#links").innerHTML = lines + bossLinks();
   // Groupés par niveau : arbre positionné sur ordinateur, rangées empilées sur téléphone
   $("#nodes").innerHTML = [0, 1, 2, 3].map((t) => `<div class="tier"><div class="tier-label">${L("tier", t)}</div>
-    <div class="tier-row">${BRICKS.filter((b) => b.tier === t).map(nodeHtml).join("")}</div></div>`).join("");
+    <div class="tier-row">${BRICKS.filter((b) => b.tier === t).map(nodeHtml).join("")}</div></div>`).join("")
+    + `<div class="tier boss-tier"><div class="tier-label">${L("bossTier")}</div><div class="tier-row">${bossNodeHtml()}</div></div>`;
 }
 
 // ---------- Panneau latéral (feuille glissante sur mobile) ----------
 function renderPanel() {
-  $("#panel-body").innerHTML = SEL.type === "skill" ? skillPanel(SK[SEL.id]) : brickPanel(BR[SEL.id]);
+  $("#panel-body").innerHTML = SEL.type === "skill" ? skillPanel(SK[SEL.id]) : SEL.type === "boss" ? bossPanel() : brickPanel(BR[SEL.id]);
 }
 function openSheet() { if (isNarrow()) { $("#panel").classList.add("open"); $("#sheet-bg").classList.remove("hidden"); } }
 function closeSheet() { $("#panel").classList.remove("open"); $("#sheet-bg").classList.add("hidden"); }
@@ -783,8 +784,9 @@ function splitArticle(w) {
 }
 const hintOf = (s) => s.split("").map((c) => (/\s/.test(c) ? "  " : /\p{L}/u.test(c) ? "_" : c)).join(" ");
 
+const wordWeights = (b) => (S.bricks[b.id] ? S.bricks[b.id].werr : b.w.map(() => 1));
 function genVocab(b, used) {
-  const bs = S.bricks[b.id], i = pickWeighted(bs.werr, used), w = b.w[i];
+  const i = pickWeighted(wordWeights(b), used), w = b.w[i];
   const types = ["tg_nat", "nat_tg"]; if (HAS_TTS && sound()) types.push("listen");
   const t = pick(types);
   if (t === "tg_nat") {
@@ -803,7 +805,7 @@ function genVocab(b, used) {
 }
 
 function genSpell(b, used) {
-  const bs = S.bricks[b.id], i = pickWeighted(bs.werr, used), w = b.w[i];
+  const i = pickWeighted(wordWeights(b), used), w = b.w[i];
   const [art, core] = splitArticle(w.tg);
   const canAna = !/[\s'-]/.test(core) && core.length >= 3 && core.length <= 9;
   if (canAna && Math.random() < 0.35) {
@@ -892,10 +894,11 @@ function renderQ() {
   SES.answered = false; SES.sel = [];
   const head = `<div class="m-head"><button class="m-close" data-x title="${esc(L("quit"))}">✕</button>
     <div class="progress"><div style="width:${(SES.i / SES.qs.length) * 100}%"></div></div>
-    <div class="combo" id="combo">${SES.combo >= 2 ? `🔥 x${SES.combo}` : ""}</div></div>`;
+    ${SES.boss ? bossHeadHtml() : ""}<div class="combo" id="combo">${SES.combo >= 2 ? `🔥 x${SES.combo}` : ""}</div></div>`;
   const spk = q.say ? `<button class="speak" data-say title="${esc(L("listen"))}">🔈</button>` : "";
   let body = `<div class="m-tag">${q.tag}${q.retry ? " · " + L("retry") : ""}</div><div class="m-instr">${q.instr}</div>`;
-  if (q.listen) body += `<div class="listen-wrap"><button class="speak huge" data-say>🔊</button></div>`;
+  if (q.listen) body += `<div class="listen-wrap"><button class="speak huge" data-say>🔊</button>
+    ${q.slow ? `<button class="btn slow-btn" data-slow>🐢 ${L("slow")}</button>` : ""}</div>`;
   else body += `<div class="m-prompt ${q.sentence ? "sentence" : ""}">${q.prompt}${spk}</div>`;
   if (q.sub) body += `<div class="p-sub sub-line">(${q.sub})</div>`;
 
@@ -903,9 +906,9 @@ function renderQ() {
   let foot = `<div class="fb"><span class="p-sub key-hint">${hint}</span></div>`;
   if (q.kind === "mcq") {
     body += `<div class="choices ${q.col ? "col" : ""}">${q.options.map((o, k) => `<button class="choice" data-c="${k}"><span class="k">${k + 1}</span><span>${o}</span></button>`).join("")}</div>`;
-  } else if (q.kind === "type") {
-    body += `<input class="type-in" id="type-in" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="${esc(L("typePh"))}" lang="${COURSE.target}">
-      <div class="hint">${q.hint}</div>
+  } else if (q.kind === "type" || q.kind === "write") {
+    body += `<input class="type-in ${q.kind === "write" ? "write" : ""}" id="type-in" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="${esc(q.kind === "write" ? L("writePh") : L("typePh"))}" lang="${COURSE.target}">
+      ${q.hint ? `<div class="hint">${q.hint}</div>` : ""}
       ${COURSE.target === "fr" ? `<div class="accents">${ACCENTS.map((c) => `<button class="acc" data-acc="${c}">${c}</button>`).join("")}</div>` : ""}`;
     foot += `<button class="btn btn-ghost" data-skip>${L("dontKnow")}</button><button class="btn btn-good btn-big" data-check>${L("check")}</button>`;
   } else {
@@ -913,13 +916,14 @@ function renderQ() {
     body += `<div class="answer-line" id="ans"></div><div class="bank" id="bank"></div>`;
     foot += `<button class="btn btn-ghost" data-skip>${L("dontKnow")}</button><button class="btn btn-good btn-big" data-check disabled>${L("check")}</button>`;
   }
-  openModal(head + `<div class="m-body">${body}</div><div class="m-foot" id="foot">${foot}</div>`, "session");
+  openModal(head + `<div class="m-body">${body}</div><div class="m-foot" id="foot">${foot}</div>`, SES.boss ? "session boss-modal" : "session");
 
   $("#modal [data-x]").onclick = quitSession;
   $$("#modal [data-say]").forEach((el) => (el.onclick = () => speak(q.say)));
+  const slowBtn = $("#modal [data-slow]"); if (slowBtn) slowBtn.onclick = () => speak(q.say, 0, 0.55);
   if (q.autoSay) speak(q.say, 200);
   if (q.kind === "mcq") $$("#modal [data-c]").forEach((el) => (el.onclick = () => answer(+el.dataset.c)));
-  if (q.kind === "type") {
+  if (q.kind === "type" || q.kind === "write") {
     const inp = $("#type-in");
     if (!IS_TOUCH) setTimeout(() => inp.focus(), 50);
     $$("#modal [data-acc]").forEach((el) => {
@@ -938,7 +942,7 @@ function renderQ() {
   KEY = (e) => {
     if (SES.answered) { if (e.key === "Enter") nextQ(); return; }
     if (q.kind === "mcq" && /^[1-4]$/.test(e.key) && +e.key <= q.options.length) answer(+e.key - 1);
-    else if (e.key === "Enter") { if (q.kind === "type" || SES.sel.length) answer(); }
+    else if (e.key === "Enter") { if (q.kind === "type" || q.kind === "write" || SES.sel.length) answer(); }
     else if (q.kind === "tiles" && e.key === "Backspace" && SES.sel.length) { SES.sel.pop(); drawTiles(); }
   };
 }
@@ -969,6 +973,10 @@ function answer(choice, skipped = false) {
     const given = $("#type-in").value;
     if (!normT(given)) return;
     ({ credit, why = null } = gradeTyped(given, q.accept));
+  } else if (q.kind === "write") {
+    const given = $("#type-in").value;
+    if (!given.trim()) return;
+    ({ credit, why = null } = gradeSentence(given, q.accept));
   } else {
     const byId = Object.fromEntries(SES.bank.map((x) => [x.id, x.t]));
     const sep = q.letters ? "" : " ";
@@ -978,7 +986,7 @@ function answer(choice, skipped = false) {
   const per = SES.per[q.key], b = BR[q.bid];
 
   // Statistiques par mot (pour revoir plus souvent les mots ratés)
-  if (q.wi !== undefined) {
+  if (q.wi !== undefined && S.bricks[q.bid]) {
     const we = S.bricks[q.bid].werr;
     we[q.wi] = credit === 1 ? Math.max(1, we[q.wi] * 0.6) : we[q.wi] + 2;
   }
@@ -997,7 +1005,7 @@ function answer(choice, skipped = false) {
     if (credit === 1) addXP(1);
   } else {
     SES.combo = 0;
-    if (!q.retry) SES.qs.push({ ...q, retry: true }); // on reverra la question à la fin
+    if (!q.retry && !SES.boss) SES.qs.push({ ...q, retry: true }); // on reverra la question à la fin (pas pendant le boss)
   }
 
   if (q.kind === "mcq") {
@@ -1006,7 +1014,7 @@ function answer(choice, skipped = false) {
       if (k === q.correct) el.classList.add("right"); else if (k === choice) el.classList.add("wrong");
     });
   }
-  if (q.kind === "type") { $("#type-in").disabled = true; $$("#modal [data-acc]").forEach((el) => (el.disabled = true)); }
+  if (q.kind === "type" || q.kind === "write") { $("#type-in").disabled = true; $$("#modal [data-acc]").forEach((el) => (el.disabled = true)); }
 
   const combo = $("#combo");
   combo.textContent = SES.combo >= 2 ? `🔥 x${SES.combo}` : "";
@@ -1029,9 +1037,14 @@ function answer(choice, skipped = false) {
   renderTop();
 }
 
-function nextQ() { SES.i++; if (SES.i >= SES.qs.length) finishSession(); else renderQ(); }
+function nextQ() { SES.i++; if (SES.i >= SES.qs.length) (SES.boss ? finishBoss() : finishSession()); else renderQ(); }
 
 function quitSession() {
+  if (SES && SES.boss) {                      // abandonner le boss compte comme une bataille
+    if (SES.i === 0 && !SES.answered) return closeModal();
+    if (!confirm(L("bossQuitConfirm"))) return;
+    return finishBoss(true);
+  }
   if (SES && SES.i > 0 && !confirm(L("quitConfirm"))) return;
   closeModal();
 }
@@ -1275,6 +1288,8 @@ function choosePathModal(PL, onPick) {
 // =====================================================================
 function bind() {
   $("#tree").addEventListener("click", (e) => {
+    if (e.target.closest("[data-boss-info]")) return bossRulesModal();
+    if (e.target.closest("[data-boss]")) { SEL = { type: "boss" }; renderAll(); return openSheet(); }
     const n = e.target.closest("[data-brick]"); if (!n) return;
     SEL = { type: "brick", id: n.dataset.brick }; renderAll(); openSheet();
   });
@@ -1287,6 +1302,12 @@ function bind() {
   $("#panel-body").addEventListener("click", (e) => {
     const el = e.target.closest("[data-act]"); if (!el || el.disabled || !S) return;
     const act = el.dataset.act;
+    if (SEL.type === "boss") {
+      if (act === "boss-info") bossRulesModal();
+      if (act === "boss-unlock") unlockBoss();
+      if (act === "boss-fight") startBossIntro();
+      return;
+    }
     if (SEL.type === "skill") {
       const s = SK[SEL.id];
       if (act === "unlock-skill") unlockSkill(s);

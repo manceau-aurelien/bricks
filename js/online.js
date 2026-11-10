@@ -204,6 +204,7 @@ function progressSummary(p) {
       xp: st.xp, rank: rankInfo(st, c).i, savoir: Math.floor(st.savoir), streak: st.streak.days, streakLast: st.streak.last,
       bricks: Object.keys(st.bricks).length, attrs, stars: starsTot, skills: Object.keys(st.skills).length,
       active: st.lastActive || null, started: !!st.started,
+      boss: st.boss && st.boss.unlocked ? { hp: st.boss.hp, defeated: !!st.boss.defeated } : null,
     };
   }
   return out;
@@ -549,6 +550,7 @@ function friendCards(f) {
     const streak = streakAlive(s.streakLast) ? s.streak : 0;
     return `<div class="fpath">${c.flag}<div class="f-main"><div><b>${PATH_NAMES[k][UI]}</b> · ${esc(rk)}</div>
       <div class="fp-stats"><span>🎖️ ${s.xp} XP</span><span>🔥 ${streak}</span><span>🧱 ${s.bricks}/${c.bricks.length}</span><span>✨ ${s.attrs}/${c.bricks.length * ATTRS.length}</span><span>⭐ ${s.stars}</span><span>💡 ${fmt(s.savoir)}</span></div>
+      ${s.boss ? `<div class="fp-boss">${s.boss.defeated ? L("friendBossWon") : L("friendBoss", s.boss.hp)}</div>` : ""}
       <div class="p-sub">${L("lastSession", fmtAgo(s.active))}</div></div></div>`;
   }).join("");
 }
