@@ -8,6 +8,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>BRICKS</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="stylesheet" href="css/style.css?v=7">
 </head>
 <body>
@@ -51,5 +54,10 @@
   <script src="js/changelog.js?v=7"></script>
   <script src="js/boss.js?v=7"></script>
   <script src="js/game.js?v=7"></script>
+  <script>
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      navigator.serviceWorker.register('sw.js').catch(err => console.warn('Service worker :', err));
+    }
+  </script>
 </body>
 </html>
