@@ -1,4 +1,6 @@
-const CACHE_NAME = 'bricks-v1';
+// Le site github.io est partagé avec d'autres jeux : on ne touche qu'aux caches qui portent ce préfixe.
+const CACHE_PREFIX = 'bricks-main-';
+const CACHE_NAME = CACHE_PREFIX + 'v2';
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -12,6 +14,7 @@ const PRECACHE_URLS = [
   './js/data-fr.js',
   './js/online.js',
   './js/changelog.js',
+  './js/install.js',
   './js/boss.js',
   './js/game.js',
 ];
@@ -33,7 +36,7 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => (k.startsWith(CACHE_PREFIX) || k === 'bricks-v1') && k !== CACHE_NAME).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
