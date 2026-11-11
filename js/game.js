@@ -13,7 +13,7 @@ const BASE_HL = 15 * MIN;          // demi-vie après la 1re leçon (≈15-21 mi
 const MIN_HL = 5 * MIN;
 const MAX_HL = 120 * DAY;
 const STAR_HL = [10 * MIN, HOUR, 6 * HOUR, DAY, 5 * DAY]; // seuils des étoiles
-const ATTR_WEIGHT = { vocab: 1, spell: 1.2, aff: 1.5, neg: 2, q: 2.5 };
+const ATTR_WEIGHT = { vocab: 1, spell: 1.2, aff: 1.5, neg: 2, q: 2.5, oral: 2.5 };
 const BRICK_COST = [0, 25, 70, 150];
 const FORM = { aff: 0, neg: 1, q: 2 };
 const OFFLINE_CAP = 12 * HOUR;
@@ -43,6 +43,7 @@ const ATTRS = [
   { id: "aff", icon: "✅", cost: 30, skill: "aff" },
   { id: "neg", icon: "🚫", cost: 50, skill: "neg" },
   { id: "q", icon: "❓", cost: 80, skill: "q" },
+  { id: "oral", icon: "🎤", cost: 100, skill: null },
 ];
 const AT = Object.fromEntries(ATTRS.map((a) => [a.id, a]));
 const SKILL_DEF = [
@@ -78,6 +79,7 @@ for (const c of Object.values(COURSES)) {
       const [a, n] = s.split("||");
       return { tg: a.split("|").map((x) => x.trim()), nat: n.split("|").map((x) => x.trim()) };
     });
+    b.o = (b.oral || []).map((s) => { const [a, n] = s.split("||"); return { tg: a.trim(), nat: n.trim() }; });
   });
   c.BR = Object.fromEntries(c.bricks.map((b) => [b.id, b]));
   c.SKILLS = SKILL_DEF.map((d) => ({ ...d, ...c.skills[d.id] }));
@@ -229,6 +231,7 @@ const attrCost = (b, at) => Math.round(at.cost * (1 + b.tier * 0.5));
 function attrLockReason(b, at) {
   const bs = S.bricks[b.id];
   if (at.skill && !S.skills[at.skill]) return L("needSkill", SK[at.skill].icon, SK[at.skill].name);
+  if (at.id === "oral" && !CAN_LISTEN) return L("noMicSupport");
   // Chaîne : l'attribut précédent doit avoir été terminé au moins une fois (l'érosion ne retire pas l'accès)
   const k = ATTRS.indexOf(at);
   if (k > 0) {
@@ -276,17 +279,26 @@ function pickVoice() {
   for (const re of prefs) { VOICE = vs.find((v) => re.test(v.lang)); if (VOICE) return; }
 }
 if (HAS_TTS) speechSynthesis.onvoiceschanged = pickVoice;
+// La voix du jeu : on suit nous-mêmes quand elle parle (sur Android, speechSynthesis.speaking n'est pas fiable)
+let TTS_BUSY_UNTIL = 0, TTS_TALKING = false;
+const ttsBusy = () => TTS_TALKING && Date.now() < TTS_BUSY_UNTIL;
 function speak(text, delay = 0, rate = 0.88) {
   if (!sound() || !HAS_TTS || !COURSE) return;
   setTimeout(() => {
+    if (typeof REC !== "undefined" && (REC || MIC_BUSY)) return;   // le micro écoute : on ne parle pas par-dessus
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = VOICE ? VOICE.lang : COURSE.target === "fr" ? "fr-FR" : "en-GB";
     if (VOICE) u.voice = VOICE;
     u.rate = rate;
+    // Sécurité : au pire la voix est considérée finie après une durée estimée d'après la longueur du texte
+    TTS_TALKING = true; TTS_BUSY_UNTIL = Date.now() + 2000 + (text.length * 110) / rate;
+    u.onend = u.onerror = () => { if (TTS_LAST === u) { TTS_TALKING = false; TTS_ENDED_AT = Date.now(); } };
+    TTS_LAST = u;
     speechSynthesis.speak(u);
   }, delay);
 }
+let TTS_LAST = null, TTS_ENDED_AT = 0;
 let AC = null;
 function beep(notes, type = "sine", dur = 0.09, vol = 0.08) {
   if (!sound()) return;
@@ -574,6 +586,7 @@ function openModal(html, cls = "") {
   $("#overlay").classList.remove("hidden"); $("#modal").scrollTop = 0;
 }
 function closeModal() {
+  stopListen();
   $("#overlay").classList.add("hidden"); $("#modal").innerHTML = ""; KEY = null; SES = null; FV = null;
   if (HAS_TTS) speechSynthesis.cancel();
   save();
@@ -673,6 +686,7 @@ function openAttrIntro(b, at) {
   const go = () => startSession([{ bid: b.id, aid: at.id, n: 8 }], { title: L("firstLessonTitle", attrName(at.id)) });
   if (at.id === "vocab") return openDiscovery(b);
   if (at.id === "spell") return slides([L("spellIntro", b.icon, b.name)], { icon: "✍️", title: attrName("spell"), onEnd: go });
+  if (at.id === "oral") return slides(L("oralIntro"), { icon: "🎤", title: attrName("oral"), onEnd: go });
   const f = FORM[at.id], s = SK[at.id];
   const ex = shuffle(b.s).slice(0, 2).map((x) => `<i>${x.tg[f]}</i><br><span class="ex-nat">${x.nat[f]}</span>`).join("<br><br>");
   slides([...s.lesson.slice(1), L("examples", b.icon, b.name, ex)], { icon: at.icon, title: L("recap", s.name), onEnd: go });
@@ -879,9 +893,38 @@ function genSentence(b, aid, used, st) {
   return { kind: "tiles", tag, instr: L("qTranslate"), prompt: nat, sentence: true, target, bank, solution: tg, sayAfter: tg };
 }
 
+// 🎤 Oral : un mélange de phrases du quotidien (½), de phrases de la brique (¼) et de mots (¼).
+// Jamais deux fois la même chose dans une séance, et on évite ce qui est sorti aux dernières séances.
+const ORAL_RECENT = 20;
+function genOral(b, used) {
+  const bs = S.bricks[b.id], recent = new Set(bs.oralRecent || []);
+  const pools = {
+    o: b.o.map((x, k) => ({ key: "o" + k, tg: x.tg, nat: x.nat, sentence: true })),
+    s: b.s.flatMap((x, k) => x.tg.map((t, f) => ({ key: `s${k}.${f}`, base: "s" + k, tg: t, nat: x.nat[f], sentence: true }))),
+    w: b.w.map((x, k) => ({ key: "w" + k, tg: x.tg, nat: x.nat, alts: x.alts, wi: k })),
+  };
+  const r = Math.random(), want = !pools.o.length ? (r < 0.4 ? "w" : "s") : r < 0.5 ? "o" : r < 0.75 ? "s" : "w";
+  const order = [want, ...["o", "s", "w"].filter((k) => k !== want)];
+  let item = null;
+  for (const avoidRecent of [true, false]) {
+    for (const k of order) {
+      // une même phrase de la brique ne revient pas sous une autre forme dans la séance
+      const c = pools[k].filter((x) => !used.has(x.key) && !(x.base && used.has(x.base)) && !(avoidRecent && recent.has(x.key)));
+      if (c.length) { item = pick(c); break; }
+    }
+    if (item) break;
+  }
+  if (!item) { used.clear(); item = pick(pools[want].length ? pools[want] : pools.w); }
+  used.add(item.key); if (item.base) used.add(item.base);
+  bs.oralRecent = [...(bs.oralRecent || []).filter((k) => k !== item.key), item.key].slice(-ORAL_RECENT);
+  return { kind: "speak", sentence: !!item.sentence, tag: L("tagOral"), instr: L(item.sentence ? "qSpeakSentence" : "qSpeakWord"),
+    prompt: item.tg, say: item.tg, sub: item.nat, subPlain: true, accept: item.alts || [item.tg], solution: item.tg, wi: item.wi };
+}
+
 function genQuestion(t, used) {
   const b = BR[t.bid], a = S.bricks[t.bid].attrs[t.aid];
-  const q = t.aid === "vocab" ? genVocab(b, used) : t.aid === "spell" ? genSpell(b, used) : genSentence(b, t.aid, used, stars(a));
+  const q = t.aid === "vocab" ? genVocab(b, used) : t.aid === "spell" ? genSpell(b, used)
+    : t.aid === "oral" ? genOral(b, used) : genSentence(b, t.aid, used, stars(a));
   q.bid = t.bid; q.aid = t.aid; q.key = t.bid + ":" + t.aid;
   return q;
 }
@@ -902,6 +945,89 @@ function gradeTyped(input, accept) {
   }
   if (acc.some((a) => a.length >= 4 && lev(a, g) <= 1)) return { credit: 0.5, why: "almostTypo" };
   return { credit: 0 };
+}
+
+// =====================================================================
+//  MICRO : reconnaissance vocale du navigateur (Chrome, Edge, Safari)
+// =====================================================================
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const CAN_LISTEN = !!SR;
+const MIC_TRIES = 3;
+const MIC_GAP = 500;          // pause entre la fin de la voix et l'ouverture du micro
+const MIC_READY_MIN = 500;    // « Parle maintenant » jamais avant 0,5 s
+let REC = null, MIC_BUSY = false;
+function stopListen() { MIC_BUSY = false; if (REC) { const r = REC; REC = null; r.onresult = r.onerror = r.onend = r.onstart = r.onaudiostart = null; try { r.abort(); } catch (e) { /* déjà fini */ } } }
+// Écoute une phrase ; onDone(liste des transcriptions possibles | null, code d'erreur | null)
+// onReady() est appelé quand le micro enregistre vraiment (le téléphone peut mettre 1 à 3 s à l'ouvrir)
+function listenOnce(onPartial, onDone, onReady = () => {}) {
+  stopListen();
+  if (HAS_TTS && ttsBusy()) { speechSynthesis.cancel(); TTS_TALKING = false; }
+  const r = new SR(); REC = r;
+  r.lang = COURSE.target === "fr" ? "fr-FR" : "en-GB";
+  r.interimResults = true; r.maxAlternatives = 5; r.continuous = false;
+  let alts = null, partial = "", err = null, ready = false, fallback = null;
+  const isReady = () => { if (ready || REC !== r) return; ready = true; clearTimeout(fallback); onReady(); };
+  r.onaudiostart = isReady;
+  r.onstart = () => { fallback = setTimeout(isReady, 4000); };   // secours si « audiostart » n'arrive jamais
+  r.onresult = (e) => {
+    isReady();
+    const res = [...e.results];
+    partial = res.map((x) => x[0].transcript).join(" ");
+    if (res.every((x) => x.isFinal)) {
+      alts = res.length === 1 ? [...res[0]].map((x) => x.transcript) : [partial];
+    }
+    onPartial(partial);
+  };
+  r.onerror = (e) => { err = e.error; };
+  r.onend = () => { clearTimeout(fallback); if (REC !== r) return; REC = null; onDone(alts || (partial ? [partial] : null), alts || partial ? null : err || "no-speech"); };
+  try { r.start(); } catch (e) { REC = null; onDone(null, "start"); }
+}
+
+const NUM_WORDS = {
+  en: "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty".split(" "),
+  fr: "zéro un deux trois quatre cinq six sept huit neuf dix onze douze treize quatorze quinze seize dix-sept dix-huit dix-neuf vingt".split(" "),
+};
+const EN_CONTR = { "won't": "will not", "can't": "can not", "cannot": "can not", "i'm": "i am", "it's": "it is", "he's": "he is", "she's": "she is",
+  "that's": "that is", "what's": "what is", "where's": "where is", "who's": "who is", "there's": "there is", "let's": "let us" };
+function speechTokens(s) {
+  let t = noAcc(normT(s)).replace(/[.,!?;:¿¡"«»()]/g, " ").replace(/-/g, " ");
+  if (COURSE.target === "en") {
+    t = t.split(/\s+/).map((w) => EN_CONTR[w] || w.replace(/n't$/, " not").replace(/'re$/, " are").replace(/'ve$/, " have").replace(/'ll$/, " will").replace(/'d$/, " would")).join(" ");
+  } else t = t.replace(/'/g, "' ");
+  const nums = NUM_WORDS[COURSE.target].map((w) => noAcc(w).replace(/-/g, " "));
+  return t.split(/\s+/).filter(Boolean).flatMap((w) => (/^\d+$/.test(w) && nums[+w] ? nums[+w].split(" ") : [w]));
+}
+// Nombre de mots attendus retrouvés dans l'ordre (petites différences tolérées sur les mots longs)
+function wordsFound(exp, got) {
+  const same = (a, b) => a === b || (a.length >= 5 && lev(a, b) <= 1);
+  const m = exp.map(() => Array(got.length + 1).fill(0));
+  const at = (i, j) => (i < 0 ? 0 : m[i][j]);
+  for (let i = 0; i < exp.length; i++)
+    for (let j = 1; j <= got.length; j++)
+      m[i][j] = Math.max(at(i - 1, j), m[i][j - 1], at(i - 1, j - 1) + (same(exp[i], got[j - 1]) ? 1 : 0));
+  // Mots attendus manquants (pour les surligner)
+  const miss = new Set(); let i = exp.length - 1, j = got.length;
+  while (i >= 0) {
+    if (j > 0 && same(exp[i], got[j - 1]) && m[i][j] === at(i - 1, j - 1) + 1) { i--; j--; }
+    else if (j > 0 && m[i][j] === m[i][j - 1]) j--;
+    else { miss.add(i); i--; }
+  }
+  return { n: exp.length ? m[exp.length - 1][got.length] : 0, miss };
+}
+// Note une prononciation : meilleure correspondance entre ce qui a été entendu et les formes acceptées
+function gradeSpeech(heard, accept) {
+  let best = { ratio: -1 };
+  const forms = new Set(); accept.forEach((a) => { forms.add(a); if (bare(normT(a)) !== normT(a)) forms.add(bare(normT(a))); });
+  for (const h of heard) {
+    const got = speechTokens(h);
+    for (const a of forms) {
+      const exp = speechTokens(a), { n, miss } = wordsFound(exp, got);
+      const ratio = exp.length ? n / exp.length : 0;
+      if (ratio > best.ratio) best = { ratio, heard: h, exp: a, miss };
+    }
+  }
+  best.credit = best.ratio >= 0.999 ? 1 : best.ratio >= 0.75 ? 0.5 : 0;
+  return best;
 }
 
 // =====================================================================
@@ -934,12 +1060,17 @@ function renderQ() {
   if (q.listen) body += `<div class="listen-wrap"><button class="speak huge" data-say>🔊</button>
     ${q.slow ? `<button class="btn slow-btn" data-slow>🐢 ${L("slow")}</button>` : ""}</div>`;
   else body += `<div class="m-prompt ${q.sentence ? "sentence" : ""}">${q.prompt}${spk}</div>`;
-  if (q.sub) body += `<div class="p-sub sub-line">(${q.sub})</div>`;
+  if (q.sub) body += `<div class="p-sub sub-line">${q.subPlain ? q.sub : `(${q.sub})`}</div>`;
 
   const hint = IS_TOUCH ? (q.kind === "mcq" ? L("hintTap") : "") : q.kind === "mcq" ? L("hintMcq") : L("hintEnter");
   let foot = `<div class="fb"><span class="p-sub key-hint">${hint}</span></div>`;
   if (q.kind === "mcq") {
     body += `<div class="choices ${q.col ? "col" : ""}">${q.options.map((o, k) => `<button class="choice" data-c="${k}"><span class="k">${k + 1}</span><span>${o}</span></button>`).join("")}</div>`;
+  } else if (q.kind === "speak") {
+    SES.mic = { tries: 0, best: null };
+    body += `<div class="mic-wrap"><button class="mic-btn" data-mic aria-label="${esc(L("micTap"))}">🎤</button>
+      <div class="mic-status" id="mic-st">${L("micTap")}</div><div class="heard" id="heard"></div></div>`;
+    foot += `<button class="btn btn-ghost" data-nomic>${L("noMicNow")}</button><button class="btn btn-good btn-big hidden" data-keep>${L("keepAnswer")}</button>`;
   } else if (q.kind === "type" || q.kind === "write") {
     body += `<input class="type-in ${q.kind === "write" ? "write" : ""}" id="type-in" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="${esc(q.kind === "write" ? L("writePh") : L("typePh"))}" lang="${COURSE.target}">
       ${q.hint ? `<div class="hint">${q.hint}</div>` : ""}
@@ -970,15 +1101,83 @@ function renderQ() {
     });
   }
   if (q.kind === "tiles") drawTiles();
+  if (q.kind === "speak") bindMic(q);
   const chk = $("#modal [data-check]"); if (chk) chk.onclick = () => answer();
   const skp = $("#modal [data-skip]"); if (skp) skp.onclick = () => answer(null, true);
 
   KEY = (e) => {
     if (SES.answered) { if (e.key === "Enter") nextQ(); return; }
+    if (q.kind === "speak") { if (e.key === " " || e.key === "Enter") { e.preventDefault(); $("#modal [data-mic]").click(); } return; }
     if (q.kind === "mcq" && /^[1-4]$/.test(e.key) && +e.key <= q.options.length) answer(+e.key - 1);
     else if (e.key === "Enter") { if (q.kind === "type" || q.kind === "write" || SES.sel.length) answer(); }
     else if (q.kind === "tiles" && e.key === "Backspace" && SES.sel.length) { SES.sel.pop(); drawTiles(); }
   };
+}
+
+// Exercice 🎤 : jusqu'à 3 essais ; une prononciation parfaite valide tout de suite
+function bindMic(q) {
+  const btn = $("#modal [data-mic]"), st = $("#mic-st"), heard = $("#heard"), keep = $("#modal [data-keep]");
+  $("#modal [data-nomic]").onclick = () => { stopListen(); SES.noMic = true; SES.answered = true; nextQ(); };
+  if (!CAN_LISTEN) { btn.disabled = true; st.textContent = L("noMicSupport"); return; }
+  const showHeard = (g) => {
+    const words = speechTokens(g.exp);
+    heard.innerHTML = `<div class="p-sub">${L("micHeard")}</div><div class="heard-txt">« ${esc(g.heard)} »</div>
+      ${g.miss.size ? `<div class="heard-exp">${words.map((w, k) => `<span class="${g.miss.has(k) ? "miss" : "hit"}">${esc(w)}</span>`).join(" ")}</div>` : ""}`;
+  };
+  btn.onclick = () => {
+    if (SES.answered) return;
+    if (REC) { try { REC.stop(); } catch (e) { /* rien */ } return; }
+    if (SES.mic.waiting) return;
+    heard.innerHTML = "";
+    // La voix du jeu est encore en train de parler : on attend qu'elle finisse au lieu de la couper
+    if (HAS_TTS && ttsBusy()) {
+      SES.mic.waiting = true; btn.classList.add("wait"); st.textContent = L("micWaitVoice");
+      const t1 = Date.now();
+      const poll = () => {
+        if (!SES || SES.qs[SES.i] !== q || SES.answered) return;
+        if (ttsBusy() && Date.now() - t1 < 8000) return setTimeout(poll, 150);
+        setTimeout(() => { if (SES && SES.mic) SES.mic.waiting = false; start(); }, MIC_GAP);
+      };
+      return setTimeout(poll, 150);
+    }
+    const gap = MIC_GAP - (Date.now() - TTS_ENDED_AT);   // la voix vient juste de finir : petite pause
+    if (gap > 0) { SES.mic.waiting = true; btn.classList.add("wait"); st.textContent = L("micWait");
+      return setTimeout(() => { if (SES && SES.mic) SES.mic.waiting = false; start(); }, gap); }
+    start();
+  };
+  let readyT = null;
+  const start = () => {
+    if (!SES || SES.qs[SES.i] !== q || SES.answered) return;
+    btn.classList.add("wait"); st.textContent = L("micWait");
+    const t0 = Date.now(); MIC_BUSY = true;
+    listenOnce((p) => { heard.innerHTML = `<div class="heard-txt live">${esc(p)}</div>`; }, (alts, err) => {
+      MIC_BUSY = false; clearTimeout(readyT);
+      btn.classList.remove("on", "wait");
+      if (!SES || SES.answered || SES.qs[SES.i] !== q) return;
+      if (!alts) {
+        st.innerHTML = L(err === "not-allowed" || err === "service-not-allowed" ? "micDenied" : err === "network" ? "micNetwork" : "micNothing");
+        return;
+      }
+      const g = gradeSpeech(alts, q.accept);
+      SES.mic.tries++;
+      if (!SES.mic.best || g.ratio > SES.mic.best.ratio) SES.mic.best = g;
+      if (g.credit === 1) return answer(1);
+      showHeard(g);
+      const left = MIC_TRIES - SES.mic.tries;
+      if (left <= 0) return answer(SES.mic.best.credit);
+      st.innerHTML = L("micAgain", left);
+      keep.classList.remove("hidden");
+    }, () => {
+      // Micro ouvert : on attend encore un peu (au moins 0,5 s après le toucher) avant de dire « Parle »
+      readyT = setTimeout(() => {
+        if (!REC) return;
+        btn.classList.remove("wait"); btn.classList.add("on");
+        st.innerHTML = L("micListening") + (window.BRICKS_TEST ? ` <span class="p-sub">(${((Date.now() - t0) / 1000).toFixed(1)} s)</span>` : "");
+        beep([988], "sine", 0.07, 0.05);
+      }, Math.max(MIC_READY_MIN - (Date.now() - t0), 200));
+    });
+  };
+  keep.onclick = () => answer(SES.mic.best ? SES.mic.best.credit : 0);
 }
 
 function drawTiles() {
@@ -1002,6 +1201,7 @@ function answer(choice, skipped = false) {
   const q = SES.qs[SES.i];
   let credit = 0, why = null;
   if (skipped) credit = 0;
+  else if (q.kind === "speak") { stopListen(); credit = choice; if (credit > 0 && credit < 1) why = "almostSpeak"; }
   else if (q.kind === "mcq") credit = choice === q.correct ? 1 : 0;
   else if (q.kind === "type") {
     const given = $("#type-in").value;
@@ -1049,6 +1249,7 @@ function answer(choice, skipped = false) {
     });
   }
   if (q.kind === "type" || q.kind === "write") { $("#type-in").disabled = true; $$("#modal [data-acc]").forEach((el) => (el.disabled = true)); }
+  if (q.kind === "speak") { $("#modal [data-mic]").disabled = true; $("#mic-st").textContent = ""; }
 
   const combo = $("#combo");
   combo.textContent = SES.combo >= 2 ? `🔥 x${SES.combo}` : "";
@@ -1067,11 +1268,14 @@ function answer(choice, skipped = false) {
     <button class="btn ${cls === "ko" ? "btn-bad" : "btn-good"} btn-big" data-next>${L("cont")}</button>`;
   $("#modal [data-next]").onclick = nextQ;
   if (!IS_TOUCH) $("#modal [data-next]").focus();
-  if (q.sayAfter || q.say) speak(q.sayAfter || q.say, 250);
+  if ((q.sayAfter || q.say) && q.kind !== "speak") speak(q.sayAfter || q.say, 250);   // à l'oral, relire la phrase ferait un écho
   renderTop();
 }
 
-function nextQ() { SES.i++; if (SES.i >= SES.qs.length) (SES.boss ? finishBoss() : finishSession()); else renderQ(); }
+function nextQ() {
+  SES.i++;
+  while (SES.noMic && SES.i < SES.qs.length && SES.qs[SES.i].kind === "speak") SES.i++;
+  if (SES.i >= SES.qs.length) (SES.boss ? finishBoss() : finishSession()); else renderQ(); }
 
 function quitSession() {
   if (SES && SES.boss) {                      // abandonner le boss compte comme une bataille
