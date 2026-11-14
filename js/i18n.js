@@ -23,7 +23,11 @@ const STR = {
     langName: { fr: "français", en: "anglais" },
     bandGrammar: "Grammaire", bandGrammarSub: "— débloque un attribut sur toutes tes briques",
     bandVocab: "Vocabulaire", bandVocabSub: "— chaque brique = 10 mots d'un thème",
-    tier: (n) => `Niveau ${n}`,
+    tier: (n) => (n < 4 ? `Niveau 1 · étage ${n + 1}` : `Niveau 2 · étage ${n - 3}`),
+    lvl2Title: "⏳ Niveau 2 · les temps",
+    reqDragon: "🐉 Vaincre le Dragon des Mots",
+    formName: (f) => ["affirmative", "négative", "question"][f],
+    skillUnlocks2: (ico, n) => `Débloque l'attribut <b>${ico} ${n}</b> sur les briques du <b>niveau 2</b>. Tu pourras ensuite le greffer brique par brique.`,
 
     // Arbre
     solidPct: (p) => `${p}% en tête`,
@@ -31,7 +35,10 @@ const STR = {
     erodedTip: (n) => `${n} attribut(s) érodé(s)`,
     pipNone: (a) => `${a} : non greffé`,
     pipToLearn: (a) => `${a} : à apprendre`,
-    skillOwned: "✔ acquise", skillLocked: "🔒 verrouillée", future: "bientôt (V2)", futureTip: "Prévu pour une prochaine version",
+    skillOwned: "✔ acquise", skillLocked: "🔒 verrouillée", futureName: "La suite", future: "prochaines mises à jour", futureTip: "Voir ce qui est prévu",
+    roadmapTitle: "Prochaines mises à jour",
+    roadmapIntro: "Voici ce qui est prévu <b>après le Dragon des Mots</b>. Chaque niveau est gardé par un nouveau dragon : il faut le battre pour passer au suivant.",
+    roadmapNote: "C'est le programme prévu : l'ordre et le contenu peuvent encore évoluer.",
 
     // Panneau compétence
     grammarSkill: "Compétence de grammaire",
@@ -45,7 +52,7 @@ const STR = {
     memo: "Mémo",
 
     // Panneau brique
-    brickLevel: (t) => `Brique de vocabulaire · niveau ${t}`,
+    brickLevel: (t) => `Brique de vocabulaire · niveau ${t < 4 ? 1 : 2}, étage ${t < 4 ? t + 1 : t - 3}`,
     lockedText: (n) => `10 mots autour du thème « ${n.toLowerCase()} ». Une fois débloquée, la brique produit du Savoir tant qu'elle reste solide.`,
     unlockFor: (c) => `Débloquer · 💡 ${c}`,
     missing: (n) => `Il te manque 💡 ${n} — révise tes briques pour en gagner.`,
@@ -137,6 +144,9 @@ const STR = {
       "Le jeu écoute et vérifie que <b>tu as été compris</b>. Il ne juge pas ton accent : il vérifie qu'un anglophone t'aurait compris.<br><br>Touche 🔈 pour écouter le modèle avant de parler.",
       "La première fois, ton navigateur va demander <b>l'accès au micro</b> : accepte.<br><br>Tu as 3 essais par question. Tu ne peux pas parler maintenant ? Touche <b>🙊 Pas maintenant</b> : ça ne compte pas comme une erreur.",
     ],
+    oralIntro2: [
+      "🎤 Tu vas dire <b>à voix haute</b> des phrases avec les mots de cette brique, aux 3 formes (affirmative, négative, question).<br><br>Chaque fois que tu apprends un <b>temps</b> sur la brique, ses phrases s'ajoutent à l'oral.",
+    ],
 
     // Durées
     durLess: "moins d'1 min", durMin: "min", durH: "h", durD: "j",
@@ -211,7 +221,7 @@ const STR = {
       "Chaque <b>brique</b> = 10 mots d'un thème.<br>Débloque-la avec du <b>💡 Savoir</b>, puis apprends ses mots.",
       "⏳ <b>Le temps érode tes briques.</b><br>Une brique solide produit du Savoir en continu ; une brique érodée ne produit presque plus rien.<br><br>Plus une brique est érodée, plus la <b>réparer rapporte</b>.",
       "Renforce une brique en lui <b>greffant des attributs</b>, dans l'ordre :<br>📖 Vocabulaire › ✍️ Orthographe › ✅ Affirmatif › 🚫 Négatif › ❓ Interrogatif<br><br>Chaque attribut se débloque quand tu as <b>terminé une fois</b> le précédent sur cette brique.<br><br>Chaque révision réussie au bon moment fait gagner des <b>★</b> : la brique tient plus longtemps et produit plus.",
-      "Les attributs de phrase se débloquent via les <b>compétences de grammaire</b> (en haut de l'arbre).<br><br>Les temps (passé, futur…) arriveront plus tard. 😉",
+      "Les attributs de phrase se débloquent via les <b>compétences de grammaire</b> (en haut de l'arbre).<br><br>Les temps (passé, futur…) arrivent au niveau 2, après le Dragon des Mots. 😉",
     ],
     firstFree: "Ta première brique, <b>👋 Premiers mots</b>, est offerte.<br><br>Let's go!",
     awayTitle: "Pendant ton absence",
@@ -278,14 +288,21 @@ const STR = {
     langName: { fr: "French", en: "English" },
     bandGrammar: "Grammar", bandGrammarSub: "— unlocks an upgrade on all your bricks",
     bandVocab: "Vocabulary", bandVocabSub: "— each brick = 10 words on one theme",
-    tier: (n) => `Level ${n}`,
+    tier: (n) => (n < 4 ? `Level 1 · row ${n + 1}` : `Level 2 · row ${n - 3}`),
+    lvl2Title: "⏳ Level 2 · tenses",
+    reqDragon: "🐉 Defeat the Word Dragon",
+    formName: (f) => ["affirmative", "negative", "question"][f],
+    skillUnlocks2: (ico, n) => `Unlocks the <b>${ico} ${n}</b> upgrade on <b>level 2</b> bricks. You can then add it brick by brick.`,
 
     solidPct: (p) => `${p}% fresh`,
     toLearn: "to learn",
     erodedTip: (n) => `${n} eroded upgrade(s)`,
     pipNone: (a) => `${a}: not added`,
     pipToLearn: (a) => `${a}: to learn`,
-    skillOwned: "✔ learned", skillLocked: "🔒 locked", future: "coming soon (V2)", futureTip: "Planned for a future version",
+    skillOwned: "✔ learned", skillLocked: "🔒 locked", futureName: "What's next", future: "upcoming updates", futureTip: "See what's planned",
+    roadmapTitle: "Upcoming updates",
+    roadmapIntro: "Here's what's planned <b>after the Word Dragon</b>. Each level is guarded by a new dragon: beat it to move on to the next one.",
+    roadmapNote: "This is the plan: the order and content may still change.",
 
     grammarSkill: "Grammar lesson",
     skillUnlocks: (ico, n) => `Unlocks the <b>${ico} ${n}</b> upgrade on <b>all</b> your vocabulary bricks. You can then add it brick by brick.`,
@@ -297,7 +314,7 @@ const STR = {
     learnFor: (c) => `Learn · 💡 ${c}`,
     memo: "Cheat sheet",
 
-    brickLevel: (t) => `Vocabulary brick · level ${t}`,
+    brickLevel: (t) => `Vocabulary brick · level ${t < 4 ? 1 : 2}, row ${t < 4 ? t + 1 : t - 3}`,
     lockedText: (n) => `10 words about “${n.toLowerCase()}”. Once unlocked, the brick produces Knowledge as long as it stays solid.`,
     unlockFor: (c) => `Unlock · 💡 ${c}`,
     missing: (n) => `You need 💡 ${n} more — review your bricks to earn some.`,
@@ -389,6 +406,9 @@ const STR = {
       "The game listens and checks that <b>you were understood</b>. It doesn't judge your accent: it checks a French speaker would have understood you.<br><br>Tap 🔈 to hear the model before you speak.",
       "The first time, your browser will ask for <b>microphone access</b>: allow it.<br><br>You get 3 tries per question. Can't speak right now? Tap <b>🙊 Not now</b>: it doesn't count as a mistake.",
     ],
+    oralIntro2: [
+      "🎤 You're going to say sentences with this brick's words <b>out loud</b>, in all 3 forms (affirmative, negative, question).<br><br>Each time you learn a <b>tense</b> on the brick, its sentences are added to speaking practice.",
+    ],
 
     durLess: "less than 1 min", durMin: "min", durH: "h", durD: "d",
 
@@ -457,7 +477,7 @@ const STR = {
       "Each <b>brick</b> = 10 words on one theme.<br>Unlock it with <b>💡 Knowledge</b>, then learn its words.",
       "⏳ <b>Time erodes your bricks.</b><br>A solid brick keeps producing Knowledge; an eroded one produces almost nothing.<br><br>The more eroded a brick is, the more <b>repairing it pays</b>.",
       "Strengthen a brick by <b>adding upgrades</b>, in order:<br>📖 Vocabulary › ✍️ Spelling › ✅ Affirmative › 🚫 Negative › ❓ Questions<br><br>Each upgrade unlocks once you've <b>completed the previous one once</b> on that brick.<br><br>Every successful review at the right time earns <b>★</b>: the brick lasts longer and produces more.",
-      "Sentence upgrades are unlocked through <b>grammar lessons</b> (at the top of the tree).<br><br>Tenses (past, future…) are coming later. 😉",
+      "Sentence upgrades are unlocked through <b>grammar lessons</b> (at the top of the tree).<br><br>Tenses (past, future…) come in level 2, after the Word Dragon. 😉",
     ],
     firstFree: "Your first brick, <b>👋 First words</b>, is on the house.<br><br>Allons-y !",
     awayTitle: "While you were away",
